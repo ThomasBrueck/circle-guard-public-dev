@@ -14,6 +14,9 @@ spring:
     hibernate:
       ddl-auto: create-drop
 
+jwt:
+  secret: "test-jwt-secret-that-is-at-least-32-characters-long-for-hmac"
+
 vault:
   secret: "746573742d7365637265742d33322d63686172732d6c6f6e672d313233343536" # hex for "test-secret-..."
   salt: "deadbeef"      # hex for encryption
