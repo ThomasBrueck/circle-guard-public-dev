@@ -61,7 +61,49 @@ public class QrValidationServiceTest {
         Mockito.when(valueOps.get("user:status:" + anonymousId)).thenReturn("CONTAGIED");
 
         QrValidationService.ValidationResult result = service.validateToken(token);
-        
+
+        assertFalse(result.valid());
+        assertEquals("RED", result.status());
+    }
+
+    @Test
+    void shouldDenyAccessForPotentialUser() {
+        String anonymousId = UUID.randomUUID().toString();
+        Key key = Keys.hmacShaKeyFor(secret.getBytes());
+        String token = Jwts.builder()
+                .setSubject(anonymousId)
+                .signWith(key, SignatureAlgorithm.HS256)
+                .compact();
+
+        Mockito.when(valueOps.get("user:status:" + anonymousId)).thenReturn("POTENTIAL");
+
+        QrValidationService.ValidationResult result = service.validateToken(token);
+
+        assertFalse(result.valid());
+        assertEquals("RED", result.status());
+    }
+
+    @Test
+    void shouldAllowAccessWhenNoStatusInRedis() {
+        String anonymousId = UUID.randomUUID().toString();
+        Key key = Keys.hmacShaKeyFor(secret.getBytes());
+        String token = Jwts.builder()
+                .setSubject(anonymousId)
+                .signWith(key, SignatureAlgorithm.HS256)
+                .compact();
+
+        Mockito.when(valueOps.get("user:status:" + anonymousId)).thenReturn(null);
+
+        QrValidationService.ValidationResult result = service.validateToken(token);
+
+        assertTrue(result.valid());
+        assertEquals("GREEN", result.status());
+    }
+
+    @Test
+    void shouldDenyAccessForInvalidToken() {
+        QrValidationService.ValidationResult result = service.validateToken("not.a.valid.token");
+
         assertFalse(result.valid());
         assertEquals("RED", result.status());
     }
