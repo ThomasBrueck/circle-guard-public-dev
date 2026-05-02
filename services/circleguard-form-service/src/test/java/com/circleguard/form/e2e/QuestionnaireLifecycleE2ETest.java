@@ -1,7 +1,10 @@
 package com.circleguard.form.e2e;
 
 import com.circleguard.form.model.Questionnaire;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -17,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @ActiveProfiles("test")
 @EmbeddedKafka(partitions = 1, topics = {"survey.submitted", "certificate.validated"})
 @DirtiesContext
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class QuestionnaireLifecycleE2ETest {
 
     @Autowired
@@ -41,6 +45,7 @@ class QuestionnaireLifecycleE2ETest {
     }
 
     @Test
+    @Order(1)
     void shouldReturnNotFoundWhenNoActiveQuestionnaire() {
         ResponseEntity<Void> response = restTemplate.getForEntity(
                 "/api/v1/questionnaires/active", Void.class);

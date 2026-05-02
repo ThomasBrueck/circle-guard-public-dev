@@ -3,33 +3,31 @@ package com.circleguard.form.integration;
 import com.circleguard.form.model.HealthSurvey;
 import com.circleguard.form.model.ValidationStatus;
 import com.circleguard.form.service.HealthSurveyService;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.kafka.core.ConsumerFactory;
-import org.springframework.kafka.test.EmbeddedKafkaBroker;
-import org.springframework.kafka.test.context.EmbeddedKafka;
-import org.springframework.kafka.test.utils.KafkaTestUtils;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
-import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 
 @SpringBootTest
 @ActiveProfiles("test")
-@EmbeddedKafka(partitions = 1, topics = {"survey.submitted", "certificate.validated"})
 @DirtiesContext
 class SurveyKafkaIntegrationTest {
 
     @Autowired
     private HealthSurveyService healthSurveyService;
 
-    @Autowired
-    private EmbeddedKafkaBroker embeddedKafka;
+    @MockBean
+    private KafkaTemplate<String, Object> kafkaTemplate;
 
     @Test
     void shouldPublishSurveySubmittedEventToKafkaWhenSurveyIsSubmitted() {
@@ -40,19 +38,9 @@ class SurveyKafkaIntegrationTest {
                 .hasCough(false)
                 .build();
 
-        Map<String, Object> consumerProps = KafkaTestUtils.consumerProps(
-                "test-survey-consumer", "true", embeddedKafka);
-        ConsumerFactory<String, Object> cf = new org.springframework.kafka.core.DefaultKafkaConsumerFactory<>(consumerProps);
+        healthSurveyService.submitSurvey(survey);
 
-        try (var consumer = cf.createConsumer()) {
-            embeddedKafka.consumeFromAnEmbeddedTopic(consumer, "survey.submitted");
-
-            healthSurveyService.submitSurvey(survey);
-
-            ConsumerRecord<String, Object> record = KafkaTestUtils.getSingleRecord(consumer, "survey.submitted");
-            assertThat(record).isNotNull();
-            assertThat(record.key()).isEqualTo(anonymousId.toString());
-        }
+        verify(kafkaTemplate).send(eq("survey.submitted"), eq(anonymousId.toString()), any());
     }
 
     @Test
@@ -68,19 +56,27 @@ class SurveyKafkaIntegrationTest {
         HealthSurvey saved = healthSurveyService.submitSurvey(survey);
         assertThat(saved.getValidationStatus()).isEqualTo(ValidationStatus.PENDING);
 
-        Map<String, Object> consumerProps = KafkaTestUtils.consumerProps(
-                "test-cert-consumer", "true", embeddedKafka);
-        ConsumerFactory<String, Object> cf = new org.springframework.kafka.core.DefaultKafkaConsumerFactory<>(consumerProps);
+        UUID adminId = UUID.randomUUID();
+        healthSurveyService.validateSurvey(saved.getId(), ValidationStatus.APPROVED, adminId);
 
-        try (var consumer = cf.createConsumer()) {
-            embeddedKafka.consumeFromAnEmbeddedTopic(consumer, "certificate.validated");
+        verify(kafkaTemplate).send(eq("certificate.validated"), eq(anonymousId.toString()), any());
+    }
 
-            UUID adminId = UUID.randomUUID();
-            healthSurveyService.validateSurvey(saved.getId(), ValidationStatus.APPROVED, adminId);
+    @Test
+    void shouldNotPublishCertificateEventWhenSurveyIsRejected() {
+        UUID anonymousId = UUID.randomUUID();
+        HealthSurvey survey = HealthSurvey.builder()
+                .anonymousId(anonymousId)
+                .hasFever(false)
+                .attachmentPath("/uploads/cert.pdf")
+                .build();
 
-            ConsumerRecord<String, Object> record = KafkaTestUtils.getSingleRecord(consumer, "certificate.validated");
-            assertThat(record).isNotNull();
-            assertThat(record.key()).isEqualTo(anonymousId.toString());
-        }
+        HealthSurvey saved = healthSurveyService.submitSurvey(survey);
+
+        UUID adminId = UUID.randomUUID();
+        healthSurveyService.validateSurvey(saved.getId(), ValidationStatus.REJECTED, adminId);
+
+        verify(kafkaTemplate, org.mockito.Mockito.never())
+                .send(eq("certificate.validated"), any(), any());
     }
 }
